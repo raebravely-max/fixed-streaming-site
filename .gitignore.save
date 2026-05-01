@@ -1,0 +1,8 @@
+echo "node_modules" >> .gitignore
+echo "dist" >> .gitignore
+echo ".env" >> .gitignore
+git rm -r --cached node_modules
+git add .
+git commit -m "Add gitignore and remove node_modules"
+git push -u origin main --force
+.vercel
