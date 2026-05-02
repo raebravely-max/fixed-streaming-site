@@ -21,17 +21,13 @@ export default function App() {
   const { user, upgradeToPro } = useAuth();
   const [searchParams] = useSearchParams();
 
-  // ✅ Detect Stripe successful payment redirect
   useEffect(() => {
     if (searchParams.get("success") === "true") {
       upgradeToPro();
-
-      // remove ?success=true from URL after upgrading
       window.history.replaceState({}, document.title, "/");
     }
   }, [searchParams, upgradeToPro]);
 
-  // ✅ Persistent Favorites
   const [favorites, setFavorites] = useState<Event[]>(() => {
     const stored = localStorage.getItem("favorites");
     return stored ? JSON.parse(stored) : [];
@@ -40,7 +36,6 @@ export default function App() {
   const toggleFavorite = (event: Event) => {
     setFavorites((prev) => {
       const exists = prev.find((e) => e.id === event.id);
-
       const updated = exists
         ? prev.filter((e) => e.id !== event.id)
         : [...prev, event];
@@ -56,33 +51,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#050505] text-white">
-      {/* ✅ LOGIN MODAL */}
-      <LoginModal
-        isOpen={showLogin}
-        onClose={() => setShowLogin(false)}
-      />
-
-      {/* ✅ UPGRADE MODAL */}
-      <UpgradeModal
-        isOpen={showUpgrade}
-        onClose={() => setShowUpgrade(false)}
-      />
-
-      {/* ✅ VIDEO MODAL */}
-      {activeStream && (
-        <VideoPlayer
-          event={activeStream}
-          onClose={() => setActiveStream(null)}
-          onLoginRequired={() => {
-            if (!user) {
-              setShowLogin(true);
-            } else {
-              setShowUpgrade(true);
-            }
-          }}
-        />
-      )}
-
       <Sidebar onUpgradeClick={() => setShowUpgrade(true)} />
 
       <main className="pl-64">
@@ -93,7 +61,6 @@ export default function App() {
 
         <div className="p-8 max-w-[1600px] mx-auto">
           <Routes>
-            {/* HOME */}
             <Route
               path="/"
               element={
@@ -122,13 +89,11 @@ export default function App() {
               }
             />
 
-            {/* LIVE */}
             <Route
               path="/live"
               element={
                 <div className="space-y-8">
                   <h2 className="text-3xl font-black">Currently Live</h2>
-
                   <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-6">
                     {LIVE_EVENTS.map((event) => (
                       <div
@@ -149,13 +114,11 @@ export default function App() {
               }
             />
 
-            {/* SCHEDULE */}
             <Route
               path="/schedule"
               element={
                 <div className="space-y-8">
                   <h2 className="text-3xl font-black">Upcoming Events</h2>
-
                   <div className="space-y-4">
                     {UPCOMING_EVENTS.map((event) => (
                       <ScheduleCard key={event.id} event={event} />
@@ -164,120 +127,33 @@ export default function App() {
                 </div>
               }
             />
-
-            {/* TOURNAMENTS */}
-            <Route
-              path="/tournaments"
-              element={
-                <div className="space-y-10">
-                  <h2 className="text-3xl font-black">Tournaments</h2>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="p-6 bg-white/5 rounded-2xl">
-                      <h3 className="font-bold text-lg mb-2">
-                        Champions League
-                      </h3>
-                      <p className="text-gray-400 text-sm">
-                        Europe’s elite football competition.
-                      </p>
-                    </div>
-
-                    <div className="p-6 bg-white/5 rounded-2xl">
-                      <h3 className="font-bold text-lg mb-2">NBA Playoffs</h3>
-                      <p className="text-gray-400 text-sm">
-                        Battle for basketball supremacy.
-                      </p>
-                    </div>
-
-                    <div className="p-6 bg-white/5 rounded-2xl">
-                      <h3 className="font-bold text-lg mb-2">
-                        Formula 1 Championship
-                      </h3>
-                      <p className="text-gray-400 text-sm">
-                        High-speed global racing action.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              }
-            />
-
-            {/* TRENDING */}
-            <Route
-              path="/trending"
-              element={
-                <div className="space-y-8">
-                  <h2 className="text-3xl font-black">Trending Now</h2>
-
-                  <p className="text-gray-400 text-sm">
-                    Most watched live events right now.
-                  </p>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-6">
-                    {LIVE_EVENTS.slice(0, 6).map((event) => (
-                      <div
-                        key={event.id}
-                        onClick={() => setActiveStream(event)}
-                      >
-                        <LiveEventCard
-                          event={event}
-                          onFavorite={() => toggleFavorite(event)}
-                          isFavorited={favorites.some(
-                            (e) => e.id === event.id
-                          )}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              }
-            />
-
-            {/* FAVORITES */}
-            <Route
-              path="/favorites"
-              element={
-                <div className="space-y-8">
-                  <h2 className="text-3xl font-black">
-                    Your Favorite Events
-                  </h2>
-
-                  {favorites.length === 0 ? (
-                    <div className="text-gray-500 py-20 text-center">
-                      No favorite events yet.
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-6">
-                      {favorites.map((event) => (
-                        <div
-                          key={event.id}
-                          onClick={() => setActiveStream(event)}
-                        >
-                          <LiveEventCard
-                            event={event}
-                            onFavorite={() => toggleFavorite(event)}
-                            isFavorited={true}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              }
-            />
-
-            {/* FALLBACK */}
-            <Route
-              path="*"
-              element={
-                <div className="text-center py-40 text-gray-500">
-                  Page Not Found
-                </div>
-              }
-            />
           </Routes>
         </div>
       </main>
+
+      <LoginModal
+        isOpen={showLogin}
+        onClose={() => setShowLogin(false)}
+      />
+
+      <UpgradeModal
+        isOpen={showUpgrade}
+        onClose={() => setShowUpgrade(false)}
+      />
+
+      {activeStream && (
+        <VideoPlayer
+          event={activeStream}
+          onClose={() => setActiveStream(null)}
+          onLoginRequired={() => {
+            if (!user) {
+              setShowLogin(true);
+            } else {
+              setShowUpgrade(true);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

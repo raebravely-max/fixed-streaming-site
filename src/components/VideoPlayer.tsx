@@ -3,6 +3,7 @@ import Hls from "hls.js";
 import { X } from "lucide-react";
 import { Event } from "../types";
 import { useAuth } from "../context/AuthContext";
+
 interface Props {
   event: Event;
   onClose: () => void;
@@ -20,86 +21,82 @@ const VideoPlayer = ({ event, onClose, onLoginRequired }: Props) => {
     if (!currentStream || !videoRef.current) return;
 
     const video = videoRef.current;
+    let hls: Hls | null = null;
 
     if (Hls.isSupported()) {
-      const hls = new Hls();
+      hls = new Hls();
       hls.loadSource(currentStream);
       hls.attachMedia(video);
-
-      hls.on(Hls.Events.ERROR, () => {
-        if (
-          event.streamUrls &&
-          currentStreamIndex < event.streamUrls.length - 1
-        ) {
-          setCurrentStreamIndex((prev) => prev + 1);
-        }
-      });
-
-      return () => {
-        hls.destroy();
-      };
-    } else if (
-      video.canPlayType("application/vnd.apple.mpegurl")
-    ) {
+    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = currentStream;
     }
-  }, [currentStreamIndex, currentStream, event.streamUrls]);
+
+    return () => {
+      if (hls) hls.destroy();
+      video.pause();
+      video.src = "";
+    };
+  }, [currentStream]);
 
   return (
-    <div className="fixed inset-0 bg-black/95 z-50 flex flex-col">
-      <div className="flex justify-between items-center p-4 border-b border-white/10">
-        <h2 className="font-bold text-lg">{event.title}</h2>
-        <button onClick={onClose}>
-          <X className="w-6 h-6" />
-        </button>
-      </div>
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
 
-      <div className="flex-1 flex flex-col items-center justify-center">
-        <video
-          ref={videoRef}
-          controls
-          autoPlay
-          className="w-full max-h-[75vh]"
-        />
+      {/* Modal Container */}
+      <div className="w-[90%] max-w-5xl bg-[#111] rounded-2xl overflow-hidden shadow-2xl border border-white/10">
 
-        {/* ✅ Stream Switching */}
-        {event.streamUrls && event.streamUrls.length > 1 && (
-          <div className="flex flex-col items-center gap-3 mt-4">
+        {/* Header */}
+        <div className="flex justify-between items-center p-4 border-b border-white/10">
+          <h2 className="font-bold text-lg text-white">
+            {event.title}
+          </h2>
+          <button onClick={onClose}>
+            <X className="w-6 h-6 text-white" />
+          </button>
+        </div>
 
-            {user?.isPro ? (
-              <div className="flex gap-3">
-                {event.streamUrls.map((_, index) => (
-                  <button
-                    key={index}
-                    onClick={() => setCurrentStreamIndex(index)}
-                    className={`px-4 py-2 rounded-lg text-sm font-bold transition ${
-                      currentStreamIndex === index
-                        ? "bg-blue-600"
-                        : "bg-white/10 hover:bg-white/20"
-                    }`}
-                  >
-                    Stream {index + 1}
-                  </button>
-                ))}
-              </div>
-            ) : user ? (
-              <button
-                onClick={onLoginRequired}
-                className="px-5 py-2 bg-yellow-500 text-black font-bold rounded-lg hover:bg-yellow-400 transition"
-              >
-                Upgrade to Pro to switch streams
-              </button>
-            ) : (
-              <button
-                onClick={onLoginRequired}
-                className="px-5 py-2 bg-blue-600 font-bold rounded-lg hover:bg-blue-700 transition"
-              >
-                Login to unlock stream switching
-              </button>
-            )}
+        {/* Video */}
+        <div className="p-6 flex flex-col items-center">
+          <video
+            ref={videoRef}
+            controls
+            autoPlay
+            className="w-full max-h-[65vh] rounded-lg"
+          />
 
-          </div>
-        )}
+          {/* Stream Switching */}
+          {event.streamUrls && event.streamUrls.length > 1 && (
+            <div className="mt-6 flex flex-col items-center gap-3">
+
+              {user?.isPro ? (
+                <div className="flex gap-3">
+                  {event.streamUrls.map((_, index) => (
+                    <button
+                      key={index}
+                      onClick={() => setCurrentStreamIndex(index)}
+                      className={`px-4 py-2 rounded-lg text-sm font-bold transition ${
+                        currentStreamIndex === index
+                          ? "bg-blue-600"
+                          : "bg-white/10 hover:bg-white/20"
+                      }`}
+                    >
+                      Stream {index + 1}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <button
+                  onClick={onLoginRequired}
+                  className="px-5 py-2 bg-yellow-500 text-black font-bold rounded-lg hover:bg-yellow-400 transition"
+                >
+                  {user
+                    ? "Upgrade to Pro to switch streams"
+                    : "Login to unlock stream switching"}
+                </button>
+              )}
+
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

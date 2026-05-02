@@ -1,4 +1,5 @@
 import { X, Crown } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
 
 interface Props {
   isOpen: boolean;
@@ -6,12 +7,26 @@ interface Props {
 }
 
 export const UpgradeModal = ({ isOpen, onClose }: Props) => {
+  const { user } = useAuth();
+
   if (!isOpen) return null;
 
   const handleUpgrade = async () => {
     try {
+      if (!user) {
+        alert("You must be logged in to upgrade.");
+        return;
+      }
+
       const response = await fetch("/api/create-checkout-session", {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          email: user.email,
+        }),
       });
 
       if (!response.ok) {
@@ -21,11 +36,11 @@ export const UpgradeModal = ({ isOpen, onClose }: Props) => {
       const data = await response.json();
 
       if (data.url) {
-        // ✅ Modern Stripe redirect
         window.location.href = data.url;
       } else {
         throw new Error("No checkout URL returned");
       }
+
     } catch (error) {
       console.error("Upgrade error:", error);
       alert("Payment failed. Please try again.");
