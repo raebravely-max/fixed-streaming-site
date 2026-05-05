@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Routes, Route, useSearchParams } from "react-router-dom";
+import { useState } from "react";
+import { Routes, Route } from "react-router-dom";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { PromoBanner } from "./components/PromoBanner";
@@ -18,15 +18,7 @@ export default function App() {
   const [showLogin, setShowLogin] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
 
-  const { user, upgradeToPro } = useAuth();
-  const [searchParams] = useSearchParams();
-
-  useEffect(() => {
-    if (searchParams.get("success") === "true") {
-      upgradeToPro();
-      window.history.replaceState({}, document.title, "/");
-    }
-  }, [searchParams, upgradeToPro]);
+  const { user } = useAuth();
 
   const [favorites, setFavorites] = useState<Event[]>(() => {
     const stored = localStorage.getItem("favorites");

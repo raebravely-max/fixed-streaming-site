@@ -12,36 +12,76 @@ interface Props {
 
 const VideoPlayer = ({ event, onClose, onLoginRequired }: Props) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [currentStreamIndex, setCurrentStreamIndex] = useState(0);
-  const { user } = useAuth();
-
-  const currentStream = event.streamUrls?.[currentStreamIndex];
+  const hlsRef = useRef<Hls | null>(null);
+  const [loading, setLoading] = useState(true);
+  const { session } = useAuth();
 
   useEffect(() => {
-    if (!currentStream || !videoRef.current) return;
+    let isMounted = true;
 
-    const video = videoRef.current;
-    let hls: Hls | null = null;
+    const loadStream = async () => {
+      if (!videoRef.current) return;
 
-    if (Hls.isSupported()) {
-      hls = new Hls();
-      hls.loadSource(currentStream);
-      hls.attachMedia(video);
-    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = currentStream;
-    }
+      if (!session) {
+        onLoginRequired();
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/stream", {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+
+        if (!response.ok) {
+          onLoginRequired();
+          return;
+        }
+
+        const { streamUrl } = await response.json();
+
+        if (!isMounted || !videoRef.current) return;
+
+        const video = videoRef.current;
+
+        if (Hls.isSupported()) {
+          const hls = new Hls();
+          hlsRef.current = hls;
+
+          hls.loadSource(streamUrl);
+          hls.attachMedia(video);
+        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+          video.src = streamUrl;
+        }
+
+        setLoading(false);
+      } catch (error) {
+        console.error("Stream load error:", error);
+        onLoginRequired();
+      }
+    };
+
+    loadStream();
 
     return () => {
-      if (hls) hls.destroy();
-      video.pause();
-      video.src = "";
+      isMounted = false;
+
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+
+      if (videoRef.current) {
+        videoRef.current.pause();
+        videoRef.current.src = "";
+      }
     };
-  }, [currentStream]);
+  }, [session, onLoginRequired]);
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
-
-      {/* Modal Container */}
       <div className="w-[90%] max-w-5xl bg-[#111] rounded-2xl overflow-hidden shadow-2xl border border-white/10">
 
         {/* Header */}
@@ -56,46 +96,16 @@ const VideoPlayer = ({ event, onClose, onLoginRequired }: Props) => {
 
         {/* Video */}
         <div className="p-6 flex flex-col items-center">
+          {loading && (
+            <div className="text-white mb-4">Loading stream...</div>
+          )}
+
           <video
             ref={videoRef}
             controls
             autoPlay
             className="w-full max-h-[65vh] rounded-lg"
           />
-
-          {/* Stream Switching */}
-          {event.streamUrls && event.streamUrls.length > 1 && (
-            <div className="mt-6 flex flex-col items-center gap-3">
-
-              {user?.isPro ? (
-                <div className="flex gap-3">
-                  {event.streamUrls.map((_, index) => (
-                    <button
-                      key={index}
-                      onClick={() => setCurrentStreamIndex(index)}
-                      className={`px-4 py-2 rounded-lg text-sm font-bold transition ${
-                        currentStreamIndex === index
-                          ? "bg-blue-600"
-                          : "bg-white/10 hover:bg-white/20"
-                      }`}
-                    >
-                      Stream {index + 1}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <button
-                  onClick={onLoginRequired}
-                  className="px-5 py-2 bg-yellow-500 text-black font-bold rounded-lg hover:bg-yellow-400 transition"
-                >
-                  {user
-                    ? "Upgrade to Pro to switch streams"
-                    : "Login to unlock stream switching"}
-                </button>
-              )}
-
-            </div>
-          )}
         </div>
       </div>
     </div>

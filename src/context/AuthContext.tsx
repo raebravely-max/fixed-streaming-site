@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
-import { User as SupabaseUser, Session } from "@supabase/supabase-js";
+import { Session } from "@supabase/supabase-js";
 
 interface AppUser {
   id: string;
@@ -15,7 +15,6 @@ interface AuthContextType {
   signUp: (email: string, password: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  upgradeToPro: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -24,14 +23,35 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<AppUser | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isPro, setIsPro] = useState(false);
+
+  const fetchUserRole = async (email: string) => {
+    const { data } = await supabase
+      .from("users")
+      .select("role, subscription_status")
+      .eq("email", email)
+      .single();
+
+    if (
+      data &&
+      data.role === "PRO" &&
+      data.subscription_status === "active"
+    ) {
+      return true;
+    }
+
+    return false;
+  };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    const initialize = async () => {
+      const { data } = await supabase.auth.getSession();
       const session = data.session;
+
       setSession(session);
 
       if (session?.user) {
+        const isPro = await fetchUserRole(session.user.email!);
+
         setUser({
           id: session.user.id,
           email: session.user.email ?? "",
@@ -40,13 +60,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
 
       setLoading(false);
-    });
+    };
+
+    initialize();
 
     const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      async (_event, session) => {
         setSession(session);
 
         if (session?.user) {
+          const isPro = await fetchUserRole(session.user.email!);
+
           setUser({
             id: session.user.id,
             email: session.user.email ?? "",
@@ -61,7 +85,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return () => {
       listener.subscription.unsubscribe();
     };
-  }, [isPro]);
+  }, []);
 
   const signUp = async (email: string, password: string) => {
     const { error } = await supabase.auth.signUp({
@@ -82,11 +106,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const signOut = async () => {
     await supabase.auth.signOut();
     setUser(null);
-    setIsPro(false);
-  };
-
-  const upgradeToPro = () => {
-    setIsPro(true);
   };
 
   return (
@@ -98,7 +117,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         signUp,
         signIn,
         signOut,
-        upgradeToPro,
       }}
     >
       {children}
