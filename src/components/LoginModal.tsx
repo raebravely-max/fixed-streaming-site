@@ -24,23 +24,37 @@ export const LoginModal = ({ isOpen, onClose }: Props) => {
       return;
     }
 
-    try {
-      setLoading(true);
-      setError(null);
+    setLoading(true);
+    setError(null);
 
+    try {
       if (isSignup) {
-        await signUp(email, password);
+        const { error } = await signUp(email, password);
+
+        if (error) {
+          setError(error);
+          setLoading(false);
+          return;
+        }
+
         alert("Account created successfully! You can now log in.");
         setIsSignup(false);
       } else {
-        await signIn(email, password);
+        const { error } = await signIn(email, password);
+
+        if (error) {
+          setError(error);
+          setLoading(false);
+          return;
+        }
+
         onClose();
       }
-    } catch (err: any) {
-      setError(err.message || "Authentication failed.");
-    } finally {
-      setLoading(false);
+    } catch (err) {
+      setError("Something went wrong. Please try again.");
     }
+
+    setLoading(false);
   };
 
   return (
@@ -80,7 +94,7 @@ export const LoginModal = ({ isOpen, onClose }: Props) => {
         <button
           onClick={handleSubmit}
           disabled={loading}
-          className="w-full py-3 bg-blue-600 rounded-lg font-bold hover:bg-blue-700 transition disabled:opacity-50"
+          className="w-full py-3 bg-blue-600 rounded-lg font-bold hover:bg-blue-700 transition disabled:opacity-50 text-white"
         >
           {loading
             ? "Please wait..."
@@ -95,7 +109,10 @@ export const LoginModal = ({ isOpen, onClose }: Props) => {
               Already have an account?{" "}
               <span
                 className="text-blue-400 cursor-pointer"
-                onClick={() => setIsSignup(false)}
+                onClick={() => {
+                  setError(null);
+                  setIsSignup(false);
+                }}
               >
                 Login
               </span>
@@ -105,7 +122,10 @@ export const LoginModal = ({ isOpen, onClose }: Props) => {
               Don’t have an account?{" "}
               <span
                 className="text-blue-400 cursor-pointer"
-                onClick={() => setIsSignup(true)}
+                onClick={() => {
+                  setError(null);
+                  setIsSignup(true);
+                }}
               >
                 Sign Up
               </span>

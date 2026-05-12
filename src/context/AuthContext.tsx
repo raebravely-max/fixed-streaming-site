@@ -12,8 +12,8 @@ interface AuthContextType {
   user: AppUser | null;
   session: Session | null;
   loading: boolean;
-  signUp: (email: string, password: string) => Promise<void>;
-  signIn: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<{ error?: string }>;
+  signIn: (email: string, password: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
 }
 
@@ -24,41 +24,41 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchUserRole = async (email: string) => {
-    const { data } = await supabase
+  const fetchUserRole = async (email: string): Promise<boolean> => {
+    const { data, error } = await supabase
       .from("users")
       .select("role, subscription_status")
       .eq("email", email)
       .single();
 
-    if (
-      data &&
-      data.role === "PRO" &&
-      data.subscription_status === "active"
-    ) {
-      return true;
+    if (error || !data) return false;
+
+    return data.role === "PRO" && data.subscription_status === "active";
+  };
+
+  const loadUserFromSession = async (session: Session | null) => {
+    if (!session?.user) {
+      setUser(null);
+      return;
     }
 
-    return false;
+    const isPro = await fetchUserRole(session.user.email!);
+
+    setUser({
+      id: session.user.id,
+      email: session.user.email ?? "",
+      isPro,
+    });
   };
 
   useEffect(() => {
     const initialize = async () => {
-      const { data } = await supabase.auth.getSession();
-      const session = data.session;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
       setSession(session);
-
-      if (session?.user) {
-        const isPro = await fetchUserRole(session.user.email!);
-
-        setUser({
-          id: session.user.id,
-          email: session.user.email ?? "",
-          isPro,
-        });
-      }
-
+      await loadUserFromSession(session);
       setLoading(false);
     };
 
@@ -67,18 +67,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const { data: listener } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         setSession(session);
-
-        if (session?.user) {
-          const isPro = await fetchUserRole(session.user.email!);
-
-          setUser({
-            id: session.user.id,
-            email: session.user.email ?? "",
-            isPro,
-          });
-        } else {
-          setUser(null);
-        }
+        await loadUserFromSession(session);
       }
     );
 
@@ -87,25 +76,38 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, []);
 
+  // ✅ SIGN UP
   const signUp = async (email: string, password: string) => {
     const { error } = await supabase.auth.signUp({
       email,
       password,
     });
-    if (error) throw error;
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    return {};
   };
 
+  // ✅ SIGN IN
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
-    if (error) throw error;
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    return {};
   };
 
   const signOut = async () => {
     await supabase.auth.signOut();
     setUser(null);
+    setSession(null);
   };
 
   return (
@@ -126,6 +128,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth must be used within AuthProvider");
+  if (!context) {
+    throw new Error("useAuth must be used within AuthProvider");
+  }
   return context;
 };
