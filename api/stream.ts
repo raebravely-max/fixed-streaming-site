@@ -23,7 +23,6 @@ export default async function handler(req: any, res: any) {
       }
     );
 
-    // ✅ Verify JWT
     const {
       data: { user },
       error: authError,
@@ -33,10 +32,9 @@ export default async function handler(req: any, res: any) {
       return res.status(401).json({ error: "Invalid session" });
     }
 
-    // ✅ Fetch user from DB (include trial_ends_at)
     const { data: dbUser, error: dbError } = await supabase
       .from("users")
-      .select("role, subscription_status, trial_ends_at")
+      .select("id, role, subscription_status, trial_ends_at")
       .eq("email", user.email)
       .single();
 
@@ -54,11 +52,28 @@ export default async function handler(req: any, res: any) {
       dbUser.trial_ends_at &&
       new Date(dbUser.trial_ends_at) > now;
 
+    const isTrialExpired =
+      dbUser.trial_ends_at &&
+      new Date(dbUser.trial_ends_at) <= now;
+
+    // ✅ Auto downgrade if trial expired
+    if (isTrialExpired) {
+      await supabase
+        .from("users")
+        .update({
+          role: "FREE",
+          subscription_status: "expired",
+          trial_ends_at: null,
+        })
+        .eq("id", dbUser.id);
+
+      return res.status(403).json({ error: "Trial expired" });
+    }
+
     if (!isPaidActive && !isTrialActive) {
       return res.status(403).json({ error: "PRO subscription required" });
     }
 
-    // ✅ Trial or Paid users reach here
     return res.status(200).json({
       streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
     });
