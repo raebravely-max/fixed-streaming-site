@@ -27,13 +27,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const fetchUserRole = async (email: string): Promise<boolean> => {
     const { data, error } = await supabase
       .from("users")
-      .select("role, subscription_status")
+      .select("role, subscription_status, trial_ends_at")
       .eq("email", email)
       .single();
 
     if (error || !data) return false;
 
-    return data.role === "PRO" && data.subscription_status === "active";
+    const now = new Date();
+
+    const isPaidActive =
+      data.role === "PRO" &&
+      data.subscription_status === "active";
+
+    const isTrialActive =
+      data.trial_ends_at &&
+      new Date(data.trial_ends_at) > now;
+
+    return isPaidActive || isTrialActive;
   };
 
   const loadUserFromSession = async (session: Session | null) => {
@@ -76,15 +86,42 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, []);
 
-  // ✅ SIGN UP
+  // ✅ SIGN UP WITH BACKEND TRIAL CREATION
   const signUp = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
     });
 
     if (error) {
       return { error: error.message };
+    }
+
+    const user = data.user;
+
+    if (!user) {
+      return { error: "User creation failed" };
+    }
+
+    try {
+      const response = await fetch("/api/create-user-profile", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          email: user.email,
+        }),
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        return { error: errData.error || "Failed to create user profile" };
+      }
+    } catch (err) {
+      console.error("Profile creation error:", err);
+      return { error: "Failed to initialize user profile" };
     }
 
     return {};
