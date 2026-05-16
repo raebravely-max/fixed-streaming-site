@@ -6,6 +6,8 @@ interface AppUser {
   id: string;
   email: string;
   isPro: boolean;
+  isTrialing: boolean;
+  trialDaysRemaining: number | null;
 }
 
 interface AuthContextType {
@@ -24,14 +26,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchUserRole = async (email: string): Promise<boolean> => {
+  const fetchUserStatus = async (email: string) => {
     const { data, error } = await supabase
       .from("users")
       .select("role, subscription_status, trial_ends_at")
       .eq("email", email)
       .single();
 
-    if (error || !data) return false;
+    if (error || !data) return null;
 
     const now = new Date();
 
@@ -39,11 +41,24 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       data.role === "PRO" &&
       data.subscription_status === "active";
 
-    const isTrialActive =
+    const isTrialing =
+      data.subscription_status === "trialing" &&
       data.trial_ends_at &&
       new Date(data.trial_ends_at) > now;
 
-    return isPaidActive || isTrialActive;
+    let trialDaysRemaining: number | null = null;
+
+    if (isTrialing && data.trial_ends_at) {
+      const diff =
+        new Date(data.trial_ends_at).getTime() - now.getTime();
+      trialDaysRemaining = Math.ceil(diff / (1000 * 60 * 60 * 24));
+    }
+
+    return {
+      isPro: isPaidActive || isTrialing,
+      isTrialing,
+      trialDaysRemaining,
+    };
   };
 
   const loadUserFromSession = async (session: Session | null) => {
@@ -52,12 +67,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       return;
     }
 
-    const isPro = await fetchUserRole(session.user.email!);
+    const status = await fetchUserStatus(session.user.email!);
+
+    if (!status) {
+      setUser(null);
+      return;
+    }
 
     setUser({
       id: session.user.id,
       email: session.user.email ?? "",
-      isPro,
+      isPro: status.isPro,
+      isTrialing: status.isTrialing,
+      trialDaysRemaining: status.trialDaysRemaining,
     });
   };
 
@@ -86,58 +108,36 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, []);
 
-  // ✅ SIGN UP WITH BACKEND TRIAL CREATION
   const signUp = async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
     });
 
-    if (error) {
-      return { error: error.message };
-    }
+    if (error) return { error: error.message };
 
     const user = data.user;
+    if (!user) return { error: "User creation failed" };
 
-    if (!user) {
-      return { error: "User creation failed" };
-    }
-
-    try {
-      const response = await fetch("/api/create-user-profile", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          userId: user.id,
-          email: user.email,
-        }),
-      });
-
-      if (!response.ok) {
-        const errData = await response.json();
-        return { error: errData.error || "Failed to create user profile" };
-      }
-    } catch (err) {
-      console.error("Profile creation error:", err);
-      return { error: "Failed to initialize user profile" };
-    }
+    await fetch("/api/create-user-profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: user.id,
+        email: user.email,
+      }),
+    });
 
     return {};
   };
 
-  // ✅ SIGN IN
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
-    if (error) {
-      return { error: error.message };
-    }
-
+    if (error) return { error: error.message };
     return {};
   };
 
@@ -165,8 +165,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used within AuthProvider");
-  }
+  if (!context) throw new Error("useAuth must be used within AuthProvider");
   return context;
 };
