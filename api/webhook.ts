@@ -1,6 +1,5 @@
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
-import { buffer } from "micro";
 
 export const config = {
   api: {
@@ -8,13 +7,17 @@ export const config = {
   },
 };
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2023-10-16",
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!); // ✅ removed apiVersion
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  }
 );
 
 export default async function handler(req: any, res: any) {
@@ -23,7 +26,7 @@ export default async function handler(req: any, res: any) {
   }
 
   const sig = req.headers["stripe-signature"];
-  const buf = await buffer(req);
+  const buf = req.body; // ✅ removed micro dependency
 
   let event: Stripe.Event;
 
@@ -34,55 +37,33 @@ export default async function handler(req: any, res: any) {
       process.env.STRIPE_WEBHOOK_SECRET!
     );
   } catch (err: any) {
-    console.error("Webhook signature verification failed.", err.message);
+    console.error("Webhook signature verification failed:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
   try {
-    // ✅ When checkout completes
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
 
       const customerId = session.customer as string;
       const subscriptionId = session.subscription as string;
-      const email = session.customer_details?.email;
+      const userId = session.metadata?.user_id;
 
-      if (!email || !customerId) {
-        return res.status(400).json({ error: "Missing customer data" });
+      if (!userId || !customerId) {
+        return res.status(400).json({ error: "Missing metadata" });
       }
 
-      // Check if user already exists
-      const { data: existingUser } = await supabase
+      await supabase
         .from("users")
-        .select("*")
-        .eq("email", email)
-        .single();
-
-      if (existingUser) {
-        // Update existing user
-        await supabase
-          .from("users")
-          .update({
-            stripe_customer_id: customerId,
-            stripe_subscription_id: subscriptionId,
-            subscription_status: "active",
-            role: "PRO",
-          })
-          .eq("id", existingUser.id);
-      } else {
-        // Insert new user
-        await supabase.from("users").insert({
-          id: crypto.randomUUID(),
-          email: email,
+        .update({
           stripe_customer_id: customerId,
           stripe_subscription_id: subscriptionId,
           subscription_status: "active",
           role: "PRO",
-        });
-      }
+        })
+        .eq("id", userId);
     }
 
-    // ✅ When subscription is cancelled
     if (event.type === "customer.subscription.deleted") {
       const subscription = event.data.object as Stripe.Subscription;
 
@@ -104,8 +85,9 @@ export default async function handler(req: any, res: any) {
     }
 
     return res.status(200).json({ received: true });
+
   } catch (error: any) {
     console.error("Webhook handler error:", error);
-    return res.status(500).json({ error: "Webhook handler failed" });
+    return res.status(500).json({ error: "Webhook failed" });
   }
 }

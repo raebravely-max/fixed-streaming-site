@@ -1,9 +1,7 @@
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2023-10-16",
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!); // ✅ removed apiVersion
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -28,7 +26,6 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: "Missing user data" });
     }
 
-    // ✅ Get existing Stripe customer if any
     const { data: userData } = await supabase
       .from("users")
       .select("stripe_customer_id")
@@ -37,7 +34,6 @@ export default async function handler(req: any, res: any) {
 
     let customerId = userData?.stripe_customer_id;
 
-    // ✅ Create Stripe customer if not exists
     if (!customerId) {
       const customer = await stripe.customers.create({
         email,
@@ -54,23 +50,18 @@ export default async function handler(req: any, res: any) {
         .eq("id", userId);
     }
 
-    // ✅ Create Checkout session
     const checkoutSession = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: "subscription",
-      payment_method_types: ["card"],
-
       line_items: [
         {
-          price: process.env.STRIPE_PRICE_ID!, // ✅ Use real Stripe price ID
+          price: process.env.STRIPE_PRICE_ID!,
           quantity: 1,
         },
       ],
-
       metadata: {
-        user_id: userId, // ✅ REQUIRED for webhook upgrade
+        user_id: userId,
       },
-
       success_url: `${req.headers.origin}/?success=true`,
       cancel_url: `${req.headers.origin}/?canceled=true`,
     });
