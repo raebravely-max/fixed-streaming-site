@@ -1,12 +1,19 @@
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: "2023-10-16",
+});
 
-// ✅ Supabase admin client (server-side only)
 const supabase = createClient(
   process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  }
 );
 
 export default async function handler(req: any, res: any) {
@@ -21,7 +28,7 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: "Missing user data" });
     }
 
-    // ✅ Check if user already has Stripe customer
+    // ✅ Get existing Stripe customer if any
     const { data: userData } = await supabase
       .from("users")
       .select("stripe_customer_id")
@@ -30,51 +37,48 @@ export default async function handler(req: any, res: any) {
 
     let customerId = userData?.stripe_customer_id;
 
-    // ✅ If no Stripe customer, create one
+    // ✅ Create Stripe customer if not exists
     if (!customerId) {
       const customer = await stripe.customers.create({
         email,
         metadata: {
-          supabase_user_id: userId,
+          user_id: userId,
         },
       });
 
       customerId = customer.id;
 
-      // ✅ Save Stripe customer ID in Supabase
       await supabase
         .from("users")
         .update({ stripe_customer_id: customerId })
         .eq("id", userId);
     }
 
-    // ✅ Create Checkout session linked to customer
-    const session = await stripe.checkout.sessions.create({
+    // ✅ Create Checkout session
+    const checkoutSession = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: "subscription",
+      payment_method_types: ["card"],
+
       line_items: [
         {
-          price_data: {
-            currency: "usd",
-            product_data: {
-              name: "SportStream Pro Membership",
-            },
-            recurring: {
-              interval: "month",
-            },
-            unit_amount: 999,
-          },
+          price: process.env.STRIPE_PRICE_ID!, // ✅ Use real Stripe price ID
           quantity: 1,
         },
       ],
+
+      metadata: {
+        user_id: userId, // ✅ REQUIRED for webhook upgrade
+      },
+
       success_url: `${req.headers.origin}/?success=true`,
       cancel_url: `${req.headers.origin}/?canceled=true`,
     });
 
-    return res.status(200).json({ url: session.url });
+    return res.status(200).json({ url: checkoutSession.url });
 
   } catch (error: any) {
-    console.error("Stripe error:", error);
+    console.error("Stripe Checkout error:", error);
     return res.status(500).json({
       error: error?.message || "Stripe error",
     });

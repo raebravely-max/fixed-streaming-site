@@ -29,14 +29,15 @@ const VideoPlayer = ({ event, onClose, onLoginRequired }: Props) => {
 
       try {
         const response = await fetch("/api/stream", {
-          method: "GET",
           headers: {
             Authorization: `Bearer ${session.access_token}`,
           },
         });
 
         if (!response.ok) {
-          onLoginRequired();
+          const err = await response.json();
+          alert(err.error || "PRO subscription required");
+          onClose();
           return;
         }
 
@@ -52,14 +53,28 @@ const VideoPlayer = ({ event, onClose, onLoginRequired }: Props) => {
 
           hls.loadSource(streamUrl);
           hls.attachMedia(video);
+
+          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            video.play();
+            setLoading(false);
+          });
+
+          hls.on(Hls.Events.ERROR, (event, data) => {
+            console.error("HLS error:", data);
+          });
+
         } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
           video.src = streamUrl;
-        }
 
-        setLoading(false);
+          video.addEventListener("loadedmetadata", () => {
+            video.play();
+            setLoading(false);
+          });
+        }
       } catch (error) {
         console.error("Stream load error:", error);
-        onLoginRequired();
+        alert("Error loading stream");
+        onClose();
       }
     };
 
@@ -78,7 +93,7 @@ const VideoPlayer = ({ event, onClose, onLoginRequired }: Props) => {
         videoRef.current.src = "";
       }
     };
-  }, [session, onLoginRequired]);
+  }, [session]);
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
@@ -95,15 +110,16 @@ const VideoPlayer = ({ event, onClose, onLoginRequired }: Props) => {
         </div>
 
         {/* Video */}
-        <div className="p-6 flex flex-col items-center">
+        <div className="p-6 flex flex-col items-center relative">
           {loading && (
-            <div className="text-white mb-4">Loading stream...</div>
+            <div className="absolute inset-0 flex items-center justify-center bg-black/70 text-white z-10">
+              Loading stream...
+            </div>
           )}
 
           <video
             ref={videoRef}
             controls
-            autoPlay
             className="w-full max-h-[65vh] rounded-lg"
           />
         </div>
